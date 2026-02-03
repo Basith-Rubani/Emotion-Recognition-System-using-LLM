@@ -147,6 +147,10 @@ This project is built for **learning and demonstration purposes** and is not opt
 
 ---
 
+## Deployment Note
+Due to the memory requirements of Whisper, DeepFace, and LLM models, this project is intended to be run locally. Free-tier cloud platforms may run out of memory.
+
+
 ## 👤 Author
 
 **Basith Rubani**
@@ -154,3 +158,4 @@ This project is built for **learning and demonstration purposes** and is not opt
 ---
 
 ✨ _A multimodal AI system combining vision, speech, and large language models._
+
