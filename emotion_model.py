@@ -13,23 +13,27 @@ _deepface_loaded = False
 
 
 # =============================
-# MODEL LOADERS (lazy)
+# MODEL LOADERS (OPTIMIZED)
 # =============================
 def load_whisper():
     global _whisper_model
     if _whisper_model is None:
         import whisper
-        _whisper_model = whisper.load_model("base")
+        # 🔥 smallest model for Render free
+        _whisper_model = whisper.load_model("tiny")
     return _whisper_model
 
 
-def load_gpt2():
+def load_gpt():
     global _gpt_tokenizer, _gpt_model
     if _gpt_tokenizer is None or _gpt_model is None:
-        from transformers import GPT2Tokenizer, GPT2LMHeadModel
-        _gpt_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-        _gpt_model = GPT2LMHeadModel.from_pretrained("gpt2")
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+
+        # 🔥 lighter than GPT-2
+        _gpt_tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
+        _gpt_model = AutoModelForCausalLM.from_pretrained("distilgpt2")
         _gpt_model.eval()
+
     return _gpt_tokenizer, _gpt_model
 
 
@@ -38,14 +42,13 @@ def load_deepface():
     if not _deepface_loaded:
         from deepface import DeepFace
         _deepface_loaded = True
-    return
 
 
 # =============================
 # UTILITY FUNCTIONS
 # =============================
 def extract_audio_from_video(video_path, audio_path="temp_audio.wav"):
-    ffmpeg.input(video_path).output(audio_path).run(overwrite_output=True)
+    ffmpeg.input(video_path).output(audio_path).run(overwrite_output=True, quiet=True)
 
 
 def transcribe_audio(audio_path):
@@ -68,10 +71,18 @@ def analyze_video_frames(video_path):
     cap = cv2.VideoCapture(video_path)
     emotions_across_frames = []
 
+    frame_count = 0
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
+
+        frame_count += 1
+
+        # 🔥 analyze only every 20th frame (huge optimization)
+        if frame_count % 20 != 0:
+            continue
 
         try:
             result = DeepFace.analyze(
@@ -98,14 +109,19 @@ def analyze_video_frames(video_path):
 
 
 def generate_description(text):
-    tokenizer, gpt_model = load_gpt2()
+    tokenizer, model = load_gpt()
 
-    inputs = tokenizer.encode(text, return_tensors="pt")
+    # 🔥 limit tokens to avoid OOM
+    inputs = tokenizer.encode(
+        text[:300], return_tensors="pt"
+    )
+
     with torch.no_grad():
-        outputs = gpt_model.generate(
+        outputs = model.generate(
             inputs,
-            max_length=150,
-            num_return_sequences=1,
+            max_length=120,
+            do_sample=True,
+            top_k=40,
             pad_token_id=tokenizer.eos_token_id,
         )
 
@@ -119,8 +135,8 @@ def predict_emotion(video_path):
     audio_path = "temp_audio.wav"
 
     extract_audio_from_video(video_path, audio_path)
-    transcription = transcribe_audio(audio_path)
 
+    transcription = transcribe_audio(audio_path)
     dominant_emotion, _ = analyze_video_frames(video_path)
     description = generate_description(transcription)
 
