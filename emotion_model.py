@@ -1,27 +1,55 @@
 import os
-import whisper
 import cv2
 import ffmpeg
 import torch
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
-from deepface import DeepFace
 
-# -----------------------------
-# Load models ONCE (important)
-# -----------------------------
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-gpt_model = GPT2LMHeadModel.from_pretrained("gpt2")
-whisper_model = whisper.load_model("base")
+# =============================
+# GLOBAL MODEL CACHES (lazy)
+# =============================
+_whisper_model = None
+_gpt_tokenizer = None
+_gpt_model = None
+_deepface_loaded = False
 
 
-# -----------------------------
-# Utility functions
-# -----------------------------
+# =============================
+# MODEL LOADERS (lazy)
+# =============================
+def load_whisper():
+    global _whisper_model
+    if _whisper_model is None:
+        import whisper
+        _whisper_model = whisper.load_model("base")
+    return _whisper_model
+
+
+def load_gpt2():
+    global _gpt_tokenizer, _gpt_model
+    if _gpt_tokenizer is None or _gpt_model is None:
+        from transformers import GPT2Tokenizer, GPT2LMHeadModel
+        _gpt_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        _gpt_model = GPT2LMHeadModel.from_pretrained("gpt2")
+        _gpt_model.eval()
+    return _gpt_tokenizer, _gpt_model
+
+
+def load_deepface():
+    global _deepface_loaded
+    if not _deepface_loaded:
+        from deepface import DeepFace
+        _deepface_loaded = True
+    return
+
+
+# =============================
+# UTILITY FUNCTIONS
+# =============================
 def extract_audio_from_video(video_path, audio_path="temp_audio.wav"):
     ffmpeg.input(video_path).output(audio_path).run(overwrite_output=True)
 
 
 def transcribe_audio(audio_path):
+    whisper_model = load_whisper()
     result = whisper_model.transcribe(audio_path)
     return result["text"]
 
@@ -34,6 +62,9 @@ def get_highest_non_neutral_emotion(emotion_dict):
 
 
 def analyze_video_frames(video_path):
+    load_deepface()
+    from deepface import DeepFace
+
     cap = cv2.VideoCapture(video_path)
     emotions_across_frames = []
 
@@ -55,8 +86,7 @@ def analyze_video_frames(video_path):
 
             emotions_across_frames.append((dominant_emotion, emotion_prob))
 
-        except Exception as e:
-            # Skip frames where analysis fails
+        except Exception:
             continue
 
     cap.release()
@@ -68,6 +98,8 @@ def analyze_video_frames(video_path):
 
 
 def generate_description(text):
+    tokenizer, gpt_model = load_gpt2()
+
     inputs = tokenizer.encode(text, return_tensors="pt")
     with torch.no_grad():
         outputs = gpt_model.generate(
@@ -76,12 +108,13 @@ def generate_description(text):
             num_return_sequences=1,
             pad_token_id=tokenizer.eos_token_id,
         )
+
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 
-# -----------------------------
-# MAIN FUNCTION (Flask will call this)
-# -----------------------------
+# =============================
+# MAIN FUNCTION (Flask calls)
+# =============================
 def predict_emotion(video_path):
     audio_path = "temp_audio.wav"
 
