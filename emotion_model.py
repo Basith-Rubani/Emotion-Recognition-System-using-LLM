@@ -4,7 +4,7 @@ import ffmpeg
 import torch
 
 # =============================
-# GLOBAL MODEL CACHES (lazy)
+# GLOBAL LAZY MODEL CACHE
 # =============================
 _whisper_model = None
 _gpt_tokenizer = None
@@ -13,14 +13,13 @@ _deepface_loaded = False
 
 
 # =============================
-# MODEL LOADERS (OPTIMIZED)
+# MODEL LOADERS (MINIMAL)
 # =============================
 def load_whisper():
     global _whisper_model
     if _whisper_model is None:
         import whisper
-        # 🔥 smallest model for Render free
-        _whisper_model = whisper.load_model("tiny")
+        _whisper_model = whisper.load_model("tiny")  # 🔥 smallest
     return _whisper_model
 
 
@@ -28,12 +27,9 @@ def load_gpt():
     global _gpt_tokenizer, _gpt_model
     if _gpt_tokenizer is None or _gpt_model is None:
         from transformers import AutoTokenizer, AutoModelForCausalLM
-
-        # 🔥 lighter than GPT-2
         _gpt_tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
         _gpt_model = AutoModelForCausalLM.from_pretrained("distilgpt2")
         _gpt_model.eval()
-
     return _gpt_tokenizer, _gpt_model
 
 
@@ -52,8 +48,8 @@ def extract_audio_from_video(video_path, audio_path="temp_audio.wav"):
 
 
 def transcribe_audio(audio_path):
-    whisper_model = load_whisper()
-    result = whisper_model.transcribe(audio_path)
+    model = load_whisper()
+    result = model.transcribe(audio_path)
     return result["text"]
 
 
@@ -69,52 +65,35 @@ def analyze_video_frames(video_path):
     from deepface import DeepFace
 
     cap = cv2.VideoCapture(video_path)
-    emotions_across_frames = []
 
-    frame_count = 0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    target_frame = max(total_frames // 2, 1)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame_count += 1
-
-        # 🔥 analyze only every 20th frame (huge optimization)
-        if frame_count % 20 != 0:
-            continue
-
-        try:
-            result = DeepFace.analyze(
-                frame,
-                actions=["emotion"],
-                enforce_detection=False
-            )
-
-            dominant_emotion, emotion_prob = get_highest_non_neutral_emotion(
-                result[0]["emotion"]
-            )
-
-            emotions_across_frames.append((dominant_emotion, emotion_prob))
-
-        except Exception:
-            continue
-
+    cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+    ret, frame = cap.read()
     cap.release()
 
-    if emotions_across_frames:
-        return max(emotions_across_frames, key=lambda x: x[1])
+    if not ret:
+        return "unknown", 0.0
 
-    return "unknown", 0.0
+    try:
+        result = DeepFace.analyze(
+            frame,
+            actions=["emotion"],
+            enforce_detection=False,
+            detector_backend="opencv",  # 🔥 lightest backend
+        )
+
+        return get_highest_non_neutral_emotion(result[0]["emotion"])
+
+    except Exception:
+        return "unknown", 0.0
 
 
 def generate_description(text):
     tokenizer, model = load_gpt()
 
-    # 🔥 limit tokens to avoid OOM
-    inputs = tokenizer.encode(
-        text[:300], return_tensors="pt"
-    )
+    inputs = tokenizer.encode(text[:300], return_tensors="pt")
 
     with torch.no_grad():
         outputs = model.generate(
@@ -129,7 +108,7 @@ def generate_description(text):
 
 
 # =============================
-# MAIN FUNCTION (Flask calls)
+# MAIN ENTRY (Flask calls)
 # =============================
 def predict_emotion(video_path):
     audio_path = "temp_audio.wav"
@@ -140,16 +119,11 @@ def predict_emotion(video_path):
     dominant_emotion, _ = analyze_video_frames(video_path)
     description = generate_description(transcription)
 
-    enhanced_description = (
-        f"{description}\n\n"
-        f"Detected dominant emotion: {dominant_emotion}"
-    )
-
     if os.path.exists(audio_path):
         os.remove(audio_path)
 
     return {
         "transcription": transcription,
         "emotion": dominant_emotion,
-        "description": enhanced_description
+        "description": f"{description}\n\nDetected dominant emotion: {dominant_emotion}",
     }
