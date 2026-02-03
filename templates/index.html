@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Emotion Recognition System</title>
+
+    <style>
+      body {
+        font-family: "Segoe UI", sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #e0f2fe, #fdf2f8);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .container {
+        max-width: 900px;
+        margin: 40px auto;
+        background: white;
+        padding: 35px;
+        border-radius: 14px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+        flex: 1;
+      }
+
+      h1 {
+        text-align: center;
+        margin-bottom: 35px;
+        color: #1f2937;
+      }
+
+      /* Upload section */
+      .upload-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 25px;
+        flex-wrap: wrap;
+      }
+
+      .file-input {
+        display: none;
+      }
+
+      .file-label {
+        background: #2563eb;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .file-label:hover {
+        background: #1e40af;
+      }
+
+      .video-preview {
+        width: 260px;
+        border-radius: 10px;
+        background: #f1f5f9;
+      }
+
+      video {
+        width: 100%;
+        border-radius: 10px;
+      }
+
+      .analyze-btn {
+        background: #16a34a;
+        color: white;
+        border: none;
+        padding: 14px 22px;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .analyze-btn:hover {
+        background: #15803d;
+      }
+
+      /* Loading */
+      .loading {
+        display: none;
+        text-align: center;
+        margin-top: 25px;
+      }
+
+      .spinner {
+        border: 6px solid #e5e7eb;
+        border-top: 6px solid #2563eb;
+        border-radius: 50%;
+        width: 45px;
+        height: 45px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 12px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .progress {
+        width: 60%;
+        margin: 10px auto;
+        background: #e5e7eb;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 10px;
+        width: 0%;
+        background: #22c55e;
+      }
+
+      /* Results */
+      .result {
+        margin-top: 35px;
+      }
+
+      .emotion-box {
+        text-align: center;
+        padding: 25px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+        margin-bottom: 25px;
+      }
+
+      .emotion-box h2 {
+        margin: 0;
+        font-size: 30px;
+        color: #065f46;
+      }
+
+      .card {
+        background: #f9fafb;
+        padding: 18px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+      }
+
+      footer {
+        text-align: center;
+        padding: 14px;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        font-size: 13px;
+        color: #555;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <h1>🎥 Emotion Recognition System using LLM</h1>
+
+      <form
+        method="POST"
+        enctype="multipart/form-data"
+        onsubmit="startLoading()"
+      >
+        <div class="upload-row">
+          <label class="file-label">
+            Choose Video
+            <input
+              type="file"
+              name="video"
+              class="file-input"
+              accept="video/*"
+              required
+              onchange="previewVideo(event)"
+            />
+          </label>
+
+          <div class="video-preview">
+            <video id="videoPreview" controls></video>
+          </div>
+
+          <button type="submit" class="analyze-btn">Analyze</button>
+        </div>
+      </form>
+
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>Analyzing video…</p>
+        <div class="progress">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+      </div>
+
+      {% if prediction %}
+      <div class="result">
+        <div class="emotion-box">
+          <h2 id="emotionResult">Detected Emotion</h2>
+        </div>
+
+        <div class="card">
+          <h3>🗣 Transcription</h3>
+          <p>{{ transcription }}</p>
+        </div>
+
+        <div class="card">
+          <h3>🧠 Generated Description</h3>
+          <p>{{ description }}</p>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <footer>Built with Flask • Whisper • GPT-2 • DeepFace</footer>
+
+    <script>
+      // Emotion emoji mapping
+      const emotionMap = {
+        happy: "😄 Happy",
+        sad: "😢 Sad",
+        angry: "😠 Angry",
+        surprise: "😲 Surprise",
+        neutral: "😐 Neutral",
+        fear: "😨 Fear",
+        disgust: "🤢 Disgust",
+      };
+
+      const emotion = "{{ prediction | lower }}";
+      if (emotion) {
+        const displayEmotion = emotionMap[emotion] || emotion;
+        const el = document.getElementById("emotionResult");
+        if (el) {
+          el.innerText = "Detected Emotion: " + displayEmotion;
+        }
+      }
+
+      // Video preview + persistence
+      function previewVideo(event) {
+        const file = event.target.files[0];
+        const video = document.getElementById("videoPreview");
+
+        const url = URL.createObjectURL(file);
+        video.src = url;
+        video.load();
+
+        // Save for reload
+        sessionStorage.setItem("videoURL", url);
+      }
+
+      // Restore video after result load
+      window.onload = function () {
+        const savedVideo = sessionStorage.getItem("videoURL");
+        if (savedVideo) {
+          const video = document.getElementById("videoPreview");
+          video.src = savedVideo;
+          video.load();
+        }
+      };
+
+      // Loading animation
+      function startLoading() {
+        document.getElementById("loading").style.display = "block";
+
+        let progress = 0;
+        const bar = document.getElementById("progressBar");
+
+        const interval = setInterval(() => {
+          if (progress >= 95) {
+            clearInterval(interval);
+          } else {
+            progress += 5;
+            bar.style.width = progress + "%";
+          }
+        }, 400);
+      }
+    </script>
+  </body>
+</html>
