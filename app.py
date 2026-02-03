@@ -32,11 +32,10 @@ def index():
                 filename = secure_filename(file.filename)
                 filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
 
-                # Ensure upload directory exists
                 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
                 file.save(filepath)
 
-                # 🔥 LAZY IMPORT (critical for Render)
+                # ✅ LAZY IMPORT (ABSOLUTELY REQUIRED)
                 from emotion_model import predict_emotion
 
                 result = predict_emotion(filepath)
@@ -46,7 +45,7 @@ def index():
         prediction=result["emotion"] if result else None,
         transcription=result["transcription"] if result else None,
         description=result["description"] if result else None,
-        error=error
+        error=error,
     )
 
 
