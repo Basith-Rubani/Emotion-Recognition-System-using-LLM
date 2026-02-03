@@ -2,6 +2,8 @@ import os
 from flask import Flask, render_template, request
 from werkzeug.utils import secure_filename
 
+from emotion_model import predict_emotion  # we’ll adapt this if needed
+
 UPLOAD_FOLDER = "static/uploads"
 ALLOWED_EXTENSIONS = {"mp4", "avi", "mov"}
 
@@ -31,12 +33,7 @@ def index():
             elif allowed_file(file.filename):
                 filename = secure_filename(file.filename)
                 filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-
-                os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
                 file.save(filepath)
-
-                # ✅ LAZY IMPORT (ABSOLUTELY REQUIRED)
-                from emotion_model import predict_emotion
 
                 result = predict_emotion(filepath)
 
@@ -45,10 +42,11 @@ def index():
         prediction=result["emotion"] if result else None,
         transcription=result["transcription"] if result else None,
         description=result["description"] if result else None,
-        error=error,
+        error=error
     )
 
 
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    app.run(debug=True)
