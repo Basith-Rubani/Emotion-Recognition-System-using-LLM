@@ -1,0 +1,18 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+
+# Uploaded videos
+static/uploads/
+
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+
+
+# Environment variables
+.env
